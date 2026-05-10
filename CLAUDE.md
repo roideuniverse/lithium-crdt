@@ -124,15 +124,16 @@ CI runs via GitHub Actions. See `.github/workflows/` for workflow definitions an
 
 ### Maven Publishing Configuration
 
-The library publishes 5 artifacts to Maven Central:
+The library publishes 6 artifacts to Maven Central:
 
 | Artifact ID | Module | Description |
 |-------------|--------|-------------|
 | `crdt-resolver` | resolver | Core algorithms (no protobuf deps) |
-| `crdt-data` | data | Wire-generated data classes |
+| `crdt-data` | data | Proto schema definitions (raw `.proto` files packaged as a JAR) |
+| `crdt-wire-data` | wire-data | Wire-generated Kotlin data classes |
 | `crdt-wire` | wire | Wire CRDT implementation |
 | `crdt-protoc` | protoc | Protoc CRDT implementation |
-| `crdt-protoc-data` | protoc-data | Protoc-generated data classes |
+| `crdt-protoc-data` | protoc-data | Protoc-generated Java data classes |
 
 **Group ID:** `co.atoms.lithium.crdt`
 
@@ -167,9 +168,8 @@ dependencyResolutionManagement {
 
 // In app/build.gradle.kts
 dependencies {
-    // For Android/Kotlin projects
+    // For Android/Kotlin projects — crdt-wire transitively pulls in crdt-wire-data and crdt-resolver
     implementation("co.atoms.lithium.crdt:crdt-wire:1.0.0")
-    implementation("co.atoms.lithium.crdt:crdt-data:1.0.0")
 }
 ```
 

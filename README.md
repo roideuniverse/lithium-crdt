@@ -57,7 +57,7 @@ val merged = resolver.resolveConflict(
 | **O(m) space overhead** | Only modified fields are version tracked  | [`VersionNode`](data/src/main/proto/co/atoms/lithium/crdt/data/version_node.proto) parallel tree |
 | **Field-level merging** | Different fields edited on different devices merge correctly | [Conflict resolution algorithms](resolver/README.md) |
 | **Type safety** | Compile-time checking through protobuf schemas | Generated protobuf types |
-| **Multi-platform** | Android (Wire) and JVM (Protoc) implementations | [`wire/`](wire/) and [`protoc/`](protoc/) |
+| **Dual implementation** | Android (Wire) and JVM (Protoc) implementations with byte-compatible output | [`wire/`](wire/) and [`protoc/`](protoc/) |
 | **Delta sync** | Efficient incremental synchronization | [`VersionChange`](data/src/main/proto/co/atoms/lithium/crdt/data/version_change.proto) tracking |
 
 </div>
@@ -69,23 +69,23 @@ val merged = resolver.resolveConflict(
 **Gradle (Kotlin/Android)**
 ```kotlin
 dependencies {
-    implementation("co.atoms.lithium.crdt:crdt-wire:1.0.0")
+    implementation("co.atoms.lithium.crdt:crdt-wire:1.1.1")
 }
 ```
 
 **Gradle (Java/JVM)**
 ```kotlin
 dependencies {
-    implementation("co.atoms.lithium.crdt:crdt-protoc:1.0.0")
+    implementation("co.atoms.lithium.crdt:crdt-protoc:1.1.1")
 }
 ```
 
-**Maven**
+**Maven (Java/JVM)**
 ```xml
 <dependency>
     <groupId>co.atoms.lithium.crdt</groupId>
     <artifactId>crdt-protoc</artifactId>
-    <version>1.0.0</version>
+    <version>1.1.1</version>
 </dependency>
 ```
 
@@ -106,36 +106,38 @@ message Order {
 Then use it in your code:
 
 ```kotlin
-// Create a resolver for your message type
-val resolverProvider = WireCrdtResolverProvider() // or CrdtMessageResolverProvider() for Protoc
-val orderResolver = resolverProvider.getResolver(Order::class)
+// Create a resolver for your message type (Wire shown; Protoc has an equivalent CrdtMessageResolverProvider)
+val resolverProvider = WireCrdtResolverProvider()
+val orderResolver = resolverProvider.messageResolver(adapter = Order.ADAPTER)
 
-// Load your order and its version metadata from the database
-val (order, versionNode) = db.loadOrder(orderId)
+// Load your order, its version metadata, and actor info from the database
+val (order, versionNode, actors) = db.loadOrder(orderId)
 
 // Apply local changes
-val (updatedOrder, updatedVersionNode, _) = orderResolver.applyLocalWrite(
+val localDelta = orderResolver.applyLocalWrite(
     currentValue = order,
-    currentNode = versionNode,  // The parallel version tree for this order
-    actors = actors,
+    currentNode = versionNode,        // The parallel version tree for this order
+    currentActors = actors,
     newValue = order.copy(status = COMPLETED),
-    timestamp = clock.now()
+    timestamp = clock.now(),
 )
-db.save(updatedOrder, updatedVersionNode)
+db.save(localDelta.mergeResult.value, localDelta.mergeResult.node, localDelta.actors)
 
 // When receiving changes from another device, resolve conflicts
-val (mergedOrder, mergedNode, strategy) = orderResolver.resolveConflict(
+val incomingDelta = orderResolver.resolveConflict(
     localValue = localOrder,
     localNode = localVersionNode,     // Your version metadata
+    localActors = localActors,
     incomingValue = incomingOrder,
-    incomingNode = incomingVersionNode // Their version metadata
+    incomingNode = incomingVersionNode,        // Their version metadata
+    incomingVersionVector = incomingActors.version_vector,
 )
 
-when (strategy) {
-    NO_CHANGE -> { /* both sides identical */ }
-    LOCAL -> { /* local was newer */ }
-    INCOMING -> { /* incoming was newer */ }
-    MERGED_VALUES -> { /* different fields merged from both sides */ }
+when (incomingDelta.mergeResult.resolution) {
+    ResolutionStrategy.NO_CHANGE -> { /* both sides identical */ }
+    ResolutionStrategy.LOCAL -> { /* local was newer */ }
+    ResolutionStrategy.INCOMING -> { /* incoming was newer */ }
+    ResolutionStrategy.MERGED_VALUES -> { /* different fields merged from both sides */ }
 }
 ```
 
